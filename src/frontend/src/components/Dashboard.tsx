@@ -11,10 +11,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Progress } from "@/components/ui/progress";
 import { Loader2, RotateCcw } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   BADGES,
   getChallenge,
@@ -28,12 +27,18 @@ import {
   useResetChallenge,
 } from "../hooks/useQueries";
 
-export default function Dashboard() {
+interface Props {
+  onSwitchChallenge: () => void;
+}
+
+export default function Dashboard({ onSwitchChallenge }: Props) {
   const { data: progress, isLoading: progressLoading } = useGetProgress();
   const { data: today, isLoading: todayLoading } = useGetTodayCompletion();
   const { mutate: markTask, isPending: markingTask } = useMarkTaskComplete();
   const { mutate: resetChallenge, isPending: resetting } = useResetChallenge();
   const [quote, setQuote] = useState("");
+  const [showNextDayInfo, setShowNextDayInfo] = useState(false);
+  const prevAllDone = useRef(false);
 
   const isLoading = progressLoading || todayLoading;
 
@@ -42,6 +47,7 @@ export default function Dashboard() {
     ? today[1]
     : ([false, false, false] as [boolean, boolean, boolean]);
   const allDone = tasks[0] && tasks[1] && tasks[2];
+  const completedCount = tasks.filter(Boolean).length;
 
   const challenge = progress ? getChallenge(progress.challengeId) : null;
   const dayTasks = challenge
@@ -53,9 +59,10 @@ export default function Dashboard() {
   const currentDay = progress ? Number(progress.currentDay) : 1;
 
   useEffect(() => {
-    if (allDone) {
+    if (allDone && !prevAllDone.current) {
       setQuote(getRandomQuote());
     }
+    prevAllDone.current = allDone;
   }, [allDone]);
 
   const handleCheck = (taskIndex: number, checked: boolean) => {
@@ -63,11 +70,19 @@ export default function Dashboard() {
     markTask({ day: today[0], taskIndex: BigInt(taskIndex) });
   };
 
+  const handleReset = () => {
+    resetChallenge(undefined, {
+      onSuccess: () => {
+        onSwitchChallenge();
+      },
+    });
+  };
+
   if (isLoading) {
     return (
       <div
         className="min-h-screen app-bg flex items-center justify-center"
-        data-ocid="dashboard.loading_state"
+        data-ocid="home.loading_state"
       >
         <div className="text-center">
           <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-3" />
@@ -80,7 +95,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen app-bg flex flex-col">
+    <div className="min-h-screen app-bg flex flex-col" data-ocid="home.page">
       {/* Header */}
       <header className="px-4 pt-8 pb-4 max-w-2xl mx-auto w-full">
         <motion.div
@@ -100,19 +115,20 @@ export default function Dashboard() {
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <div className="bg-white/80 backdrop-blur-sm border border-border rounded-full px-3 py-1.5 flex items-center gap-1.5 shadow-xs">
-              <span className="text-lg">⭐</span>
-              <span className="font-display font-bold text-foreground text-sm">
-                {points} pts
-              </span>
-            </div>
+          <div
+            data-ocid="home.points_panel"
+            className="bg-white/80 backdrop-blur-sm border border-border rounded-full px-3 py-1.5 flex items-center gap-1.5 shadow-xs"
+          >
+            <span className="text-lg">⭐</span>
+            <span className="font-display font-bold text-foreground text-sm">
+              {points} pts
+            </span>
           </div>
         </motion.div>
       </header>
 
       <main className="flex-1 px-4 pb-10 max-w-2xl mx-auto w-full space-y-4">
-        {/* Progress Card */}
+        {/* Progress + Streak Card */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -132,7 +148,7 @@ export default function Dashboard() {
               </p>
             </div>
             <div
-              data-ocid="dashboard.streak_panel"
+              data-ocid="home.streak_panel"
               className="bg-gradient-to-br from-orange-100 to-amber-50 border border-orange-200 rounded-xl px-3 py-2 text-center"
             >
               <p className="text-xl">🔥</p>
@@ -144,7 +160,7 @@ export default function Dashboard() {
           </div>
 
           {/* Progress bar */}
-          <div data-ocid="dashboard.progress_bar" className="relative">
+          <div className="relative">
             <div className="h-3 rounded-full bg-muted overflow-hidden">
               <motion.div
                 initial={{ width: 0 }}
@@ -179,12 +195,16 @@ export default function Dashboard() {
                 Today's Tasks
               </h2>
               <p className="text-xs text-muted-foreground">
-                Day {dayNumber} • Complete all 3
+                Day {dayNumber} • Complete all 3 to finish the day
               </p>
             </div>
             <div className="ml-auto">
-              <span className="text-sm font-semibold text-muted-foreground">
-                {tasks.filter(Boolean).length}/3
+              <span
+                className={`text-sm font-bold ${
+                  allDone ? "text-emerald-600" : "text-muted-foreground"
+                }`}
+              >
+                {completedCount}/3
               </span>
             </div>
           </div>
@@ -202,7 +222,7 @@ export default function Dashboard() {
                   className={`flex items-center gap-3 p-3 rounded-xl transition-colors ${
                     done
                       ? "bg-emerald-50 border border-emerald-200"
-                      : "bg-muted/40 border border-transparent"
+                      : "bg-muted/40 border border-transparent hover:bg-muted/60"
                   }`}
                 >
                   <Checkbox
@@ -224,17 +244,27 @@ export default function Dashboard() {
                     {taskText}
                   </label>
                   {done && <span className="text-emerald-500 text-lg">✓</span>}
+                  {markingTask && !done && (
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  )}
                 </motion.div>
               );
             })}
           </div>
+
+          {/* Task progress hint */}
+          {!allDone && (
+            <p className="mt-3 text-center text-xs text-muted-foreground">
+              Check off all 3 tasks to complete Day {dayNumber} ✨
+            </p>
+          )}
         </motion.div>
 
-        {/* Celebration Banner */}
+        {/* ✅ Day Complete Banner — shown when all tasks done */}
         <AnimatePresence>
           {allDone && (
             <motion.div
-              data-ocid="dashboard.celebration_panel"
+              data-ocid="home.success_state"
               initial={{ opacity: 0, scale: 0.9, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9 }}
@@ -242,12 +272,15 @@ export default function Dashboard() {
               className="celebrate-pulse bg-gradient-to-br from-amber-400 via-orange-400 to-pink-400 rounded-2xl p-5 shadow-glow text-white"
             >
               <div className="text-center">
-                <p className="text-3xl mb-1">🎉</p>
+                <p className="text-4xl mb-2">🎉</p>
                 <h3 className="font-display text-xl font-extrabold">
-                  Great job! Day {dayNumber} completed!
+                  Day {dayNumber} Complete!
                 </h3>
+                <p className="text-sm text-white/90 mt-1 font-semibold">
+                  +10 points earned · Keep the streak alive!
+                </p>
                 {quote && (
-                  <p className="mt-2 text-sm text-white/90 italic leading-relaxed">
+                  <p className="mt-3 text-sm text-white/90 italic leading-relaxed border-t border-white/20 pt-3">
                     &ldquo;{quote}&rdquo;
                   </p>
                 )}
@@ -256,9 +289,62 @@ export default function Dashboard() {
           )}
         </AnimatePresence>
 
+        {/* ➡️ Next Day CTA — the main fix */}
+        <AnimatePresence>
+          {allDone && (
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ delay: 0.3 }}
+              className="bg-white/90 backdrop-blur-sm rounded-2xl p-5 shadow-card border border-emerald-200"
+            >
+              <div className="flex items-center gap-3 mb-3">
+                <span className="text-2xl">🌅</span>
+                <div>
+                  <h3 className="font-display font-bold text-foreground">
+                    Ready for Day {dayNumber + 1}?
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Your next day starts when you come back tomorrow
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                data-ocid="home.next_day_button"
+                onClick={() => setShowNextDayInfo(true)}
+                className="w-full py-4 rounded-xl font-display font-extrabold text-lg text-white shadow-glow transition-transform active:scale-95 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400"
+              >
+                ✅ See You Tomorrow!
+              </button>
+
+              <AnimatePresence>
+                {showNextDayInfo && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="mt-3 p-3 bg-emerald-50 rounded-xl border border-emerald-200">
+                      <p className="text-sm text-emerald-800 font-medium text-center">
+                        🌟 Amazing work today! Day {dayNumber + 1} will unlock
+                        automatically tomorrow. Come back and keep your{" "}
+                        <strong>🔥 streak</strong> alive!
+                      </p>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Badges */}
         <motion.div
-          data-ocid="dashboard.badges_panel"
+          data-ocid="home.badges_panel"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.35 }}
@@ -269,6 +355,9 @@ export default function Dashboard() {
             <h2 className="font-display font-bold text-lg text-foreground">
               Badges
             </h2>
+            <span className="ml-auto text-xs text-muted-foreground">
+              {earnedBadges.length} / {BADGES.length} earned
+            </span>
           </div>
 
           <div className="grid grid-cols-4 gap-3">
@@ -299,7 +388,7 @@ export default function Dashboard() {
           </div>
         </motion.div>
 
-        {/* Reset */}
+        {/* Switch Challenge */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -309,7 +398,7 @@ export default function Dashboard() {
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button
-                data-ocid="dashboard.reset_button"
+                data-ocid="home.switch_challenge_button"
                 variant="ghost"
                 size="sm"
                 className="text-muted-foreground hover:text-destructive gap-1.5"
@@ -327,19 +416,19 @@ export default function Dashboard() {
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel data-ocid="dashboard.cancel_button">
+                <AlertDialogCancel data-ocid="home.cancel_button">
                   Cancel
                 </AlertDialogCancel>
                 <AlertDialogAction
-                  data-ocid="dashboard.confirm_button"
-                  onClick={() => resetChallenge()}
+                  data-ocid="home.confirm_button"
+                  onClick={handleReset}
                   disabled={resetting}
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                 >
                   {resetting ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
-                    "Yes, Reset"
+                    "Yes, Switch"
                   )}
                 </AlertDialogAction>
               </AlertDialogFooter>

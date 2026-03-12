@@ -1,18 +1,35 @@
+import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import { motion } from "motion/react";
 import { ChallengeId } from "../backend";
 import { CHALLENGES } from "../data/challenges";
 import { useStartChallenge } from "../hooks/useQueries";
 
-const ocidMap: Record<ChallengeId, string> = {
-  [ChallengeId.glowUp]: "challenge.glowup_button",
-  [ChallengeId.fitnessReset]: "challenge.fitness_button",
-  [ChallengeId.mentalHealth]: "challenge.mentalhealth_button",
-  [ChallengeId.moneySaving]: "challenge.moneysaving_button",
-};
+interface Props {
+  onStarted: () => void;
+}
 
-export default function ChallengeSelect() {
+const CHALLENGE_ORDER: ChallengeId[] = [
+  ChallengeId.glowUp,
+  ChallengeId.fitnessReset,
+  ChallengeId.mentalHealth,
+  ChallengeId.moneySaving,
+];
+
+export default function ChallengeSelect({ onStarted }: Props) {
   const { mutate: startChallenge, isPending, variables } = useStartChallenge();
+
+  const orderedChallenges = CHALLENGE_ORDER.map(
+    (id) => CHALLENGES.find((c) => c.id === id)!,
+  );
+
+  const handleStart = (challengeId: ChallengeId) => {
+    startChallenge(challengeId, {
+      onSuccess: () => {
+        onStarted();
+      },
+    });
+  };
 
   return (
     <div className="min-h-screen app-bg flex flex-col">
@@ -38,60 +55,61 @@ export default function ChallengeSelect() {
       {/* Challenge Cards */}
       <main className="flex-1 px-4 pb-12 max-w-2xl mx-auto w-full">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {CHALLENGES.map((challenge, i) => {
+          {orderedChallenges.map((challenge, i) => {
             const isLoading = isPending && variables === challenge.id;
+            const cardOcid = `challenge.item.${i + 1}`;
+            const btnOcid = `challenge.select_button.${i + 1}`;
             return (
-              <motion.button
+              <motion.div
                 key={challenge.id}
-                data-ocid={ocidMap[challenge.id]}
+                data-ocid={cardOcid}
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.1, duration: 0.45 }}
-                whileHover={{ scale: 1.03, y: -3 }}
-                whileTap={{ scale: 0.97 }}
-                onClick={() => startChallenge(challenge.id)}
-                disabled={isPending}
-                className="relative overflow-hidden rounded-2xl p-6 text-left shadow-card border border-white/60 bg-white/80 backdrop-blur-sm group cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed transition-shadow hover:shadow-glow"
+                className="relative overflow-hidden rounded-2xl shadow-card border border-white/60 bg-white/80 backdrop-blur-sm"
               >
                 {/* Gradient accent top bar */}
                 <div
                   className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${challenge.gradient}`}
                 />
 
-                <div className="flex items-start gap-3">
-                  <span className="text-4xl leading-none mt-0.5">
-                    {challenge.emoji}
-                  </span>
-                  <div className="flex-1">
-                    <h2
-                      className={`font-display font-bold text-lg leading-tight ${challenge.textColor}`}
-                    >
-                      {challenge.name}
-                    </h2>
-                    <p className="text-xs text-muted-foreground font-body mt-0.5 mb-2">
-                      {challenge.subtitle}
-                    </p>
-                    <p className="text-sm text-foreground/80 font-body leading-relaxed">
-                      {challenge.description}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-4 flex items-center justify-between">
-                  <span className="text-xs font-semibold text-muted-foreground">
-                    30 Days
-                  </span>
-                  {isLoading ? (
-                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                  ) : (
-                    <span
-                      className={`text-sm font-bold ${challenge.textColor} group-hover:translate-x-1 transition-transform`}
-                    >
-                      Start →
+                <div className="p-6">
+                  <div className="flex items-start gap-3 mb-4">
+                    <span className="text-4xl leading-none mt-0.5">
+                      {challenge.emoji}
                     </span>
-                  )}
+                    <div className="flex-1">
+                      <h2
+                        className={`font-display font-bold text-lg leading-tight ${challenge.textColor}`}
+                      >
+                        {challenge.name}
+                      </h2>
+                      <p className="text-xs text-muted-foreground font-body mt-0.5 mb-2">
+                        {challenge.subtitle}
+                      </p>
+                      <p className="text-sm text-foreground/80 font-body leading-relaxed">
+                        {challenge.description}
+                      </p>
+                    </div>
+                  </div>
+
+                  <Button
+                    data-ocid={btnOcid}
+                    onClick={() => handleStart(challenge.id)}
+                    disabled={isPending}
+                    className={`w-full font-display font-bold text-base py-5 bg-gradient-to-r ${challenge.gradient} text-white border-0 hover:opacity-90 transition-opacity shadow-md`}
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                        Starting...
+                      </>
+                    ) : (
+                      "Start Challenge →"
+                    )}
+                  </Button>
                 </div>
-              </motion.button>
+              </motion.div>
             );
           })}
         </div>
